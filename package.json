@@ -1,0 +1,14 @@
+{
+  "name": "bank",
+  "version": "1.0.0",
+  "author": "tot_dlinnyy <gnngr333@gmail.com>",
+  "license": "MIT",
+  "devDependencies": {
+    "cz-conventional-changelog": "3.3.0"
+  },
+  "config": {
+    "commitizen": {
+      "path": "./node_modules/cz-conventional-changelog"
+    }
+  }
+}
