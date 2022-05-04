@@ -8,6 +8,7 @@ import { config } from './config/config'
 import { graphqlConfig } from './config/graphql.config'
 import { typeOrmConfig } from './config/typeorm.config'
 import { UsersModule } from './users/users.module'
+import { WalletsModule } from './wallets/wallets.module'
 
 @Module({
     imports: [
@@ -15,6 +16,7 @@ import { UsersModule } from './users/users.module'
         TypeOrmModule.forRootAsync(typeOrmConfig),
         GraphQLModule.forRoot<ApolloFederationDriverConfig>(graphqlConfig),
         UsersModule,
+        WalletsModule,
     ],
 })
 export class AppModule {}

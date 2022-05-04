@@ -7,6 +7,8 @@ import {
 import { InjectRepository } from '@nestjs/typeorm'
 import { Repository } from 'typeorm'
 
+import { WalletsService } from '../wallets/wallets.service'
+
 import { CreateUserDto } from './dtos/createUser.dto'
 import { UserEntity } from './entities/user.entity'
 
@@ -17,6 +19,7 @@ export class UsersService {
     constructor(
         @InjectRepository(UserEntity)
         private readonly _usersRepository: Repository<UserEntity>,
+        private readonly _walletsService: WalletsService,
     ) {}
 
     // Single user get function
@@ -85,24 +88,20 @@ export class UsersService {
         // Deleting a user
         await this._usersRepository.softDelete({ id })
 
-        // TODO add wallet entity and realize lock wallet functional
+        // Blocking wallets, true if wallets are blocked, false if there were no wallets, or they are closed
+        const isWalletsLocked = await this._walletsService.lock({
+            ownerId: id,
+        })
 
-        // // Blocking wallets, true if wallets are blocked, false if there were no wallets, or they are closed
-        // const isWalletsLocked = await this._walletsService.lock({
-        //   ownerId: id,
-        // })
-        //
-        // this._logger.debug('IS USER WALLETS LOCKED')
-        // this._logger.debug(isWalletsLocked)
-        //
-        // if (!isWalletsLocked) {
-        //   this._logger.debug('USER DOES NOT HAVE ANY WALLETS, RETURN RESULT')
-        //   return 'User deleted, wallets not found'
-        // }
-        //
-        // this._logger.debug('USER HAVE WALLETS, WALLETS LOCKED, RETURN RESULT')
-        // return 'User deleted, wallets blocked'
+        this._logger.debug('IS USER WALLETS LOCKED')
+        this._logger.debug(isWalletsLocked)
 
-        return 'User deleted'
+        if (!isWalletsLocked) {
+            this._logger.debug('USER DOES NOT HAVE ANY WALLETS, RETURN RESULT')
+            return 'User deleted, wallets not found'
+        }
+
+        this._logger.debug('USER HAVE WALLETS, WALLETS LOCKED, RETURN RESULT')
+        return 'User deleted, wallets blocked'
     }
 }
