@@ -7,6 +7,7 @@ export const graphqlConfig: ApolloGatewayDriverConfig = {
         supergraphSdl: new IntrospectAndCompose({
             subgraphs: [
                 { name: 'users_wallets', url: 'http://localhost:3001/graphql' },
+                { name: 'transactions', url: 'http://localhost:3002/graphql' },
             ],
         }),
     },

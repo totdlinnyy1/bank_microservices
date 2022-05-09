@@ -1,9 +1,17 @@
 import { Logger, UsePipes, ValidationPipe } from '@nestjs/common'
-import { Args, Mutation, Query, Resolver } from '@nestjs/graphql'
+import {
+    Args,
+    Mutation,
+    Parent,
+    Query,
+    ResolveField,
+    Resolver,
+} from '@nestjs/graphql'
 
 import { CreateWalletInputType } from './graphql/inputs/createWallet.input-type'
 import { DepositOrWithdrawInputType } from './graphql/inputs/depositOrWithdraw.input-type'
 import { MakeTransactionInputType } from './graphql/inputs/makeTransaction.input-type'
+import { TransactionObjectType } from './graphql/transaction.object-type'
 import { WalletObjectType } from './graphql/wallet.object-type'
 import { WalletsService } from './wallets.service'
 
@@ -27,7 +35,18 @@ export class WalletsResolver {
         id: string,
     ): Promise<WalletObjectType> {
         this._logger.debug('GET WALLET BY ID')
+        this._logger.debug(id)
         return await this._walletsService.wallet(id)
+    }
+
+    // Resolve wallet transactions
+    @ResolveField(() => [TransactionObjectType])
+    async transactions(
+        @Parent() wallet: WalletObjectType,
+    ): Promise<TransactionObjectType[]> {
+        this._logger.debug('GET WALLET TRANSACTIONS BY WALLET ID')
+        this._logger.debug(wallet.id)
+        return await this._walletsService.transactionsByWalletId(wallet.id)
     }
 
     // Mutation to create a wallet
@@ -53,36 +72,36 @@ export class WalletsResolver {
     }
 
     // Deposit Mutation
-    @Mutation(() => WalletObjectType)
+    @Mutation(() => TransactionObjectType)
     @UsePipes(new ValidationPipe())
     async deposit(
         @Args('input', { type: () => DepositOrWithdrawInputType })
         input: DepositOrWithdrawInputType,
-    ): Promise<WalletObjectType> {
+    ): Promise<TransactionObjectType> {
         this._logger.debug('MAKE DEPOSIT')
         this._logger.debug({ input })
         return await this._walletsService.deposit(input)
     }
 
     // Withdraw Mutation
-    @Mutation(() => WalletObjectType)
+    @Mutation(() => TransactionObjectType)
     @UsePipes(new ValidationPipe())
     async withdraw(
         @Args('input', { type: () => DepositOrWithdrawInputType })
         input: DepositOrWithdrawInputType,
-    ): Promise<WalletObjectType> {
+    ): Promise<TransactionObjectType> {
         this._logger.debug('MAKE WITHDRAW')
         this._logger.debug({ input })
         return await this._walletsService.withdraw(input)
     }
 
     // Mutation to transfer money between wallets
-    @Mutation(() => WalletObjectType)
+    @Mutation(() => TransactionObjectType)
     @UsePipes(new ValidationPipe())
     async createTransaction(
         @Args('input', { type: () => MakeTransactionInputType })
         input: MakeTransactionInputType,
-    ): Promise<WalletObjectType> {
+    ): Promise<TransactionObjectType> {
         this._logger.debug('MAKE TRANSACTION')
         this._logger.debug({ input })
         return await this._walletsService.transaction(input)
