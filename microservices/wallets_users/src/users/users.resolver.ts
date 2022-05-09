@@ -25,7 +25,7 @@ export class UsersResolver {
     ) {}
 
     // Query to get a single user
-    @Query(() => UserObjectType)
+    @Query(() => UserObjectType, { description: 'Query for get user by id' })
     async user(
         @Args('id', { type: () => String })
         id: string,
@@ -36,20 +36,20 @@ export class UsersResolver {
     }
 
     // Request to get users
-    @Query(() => [UserObjectType])
+    @Query(() => [UserObjectType], { description: 'Query for get users' })
     async users(): Promise<UserObjectType[]> {
         this._logger.debug('GET USERS')
         return await this._usersService.users()
     }
 
     // Resolve user wallets
-    @ResolveField(() => [WalletObjectType])
+    @ResolveField(() => [WalletObjectType], { description: 'Get user wallets' })
     async wallets(@Parent() user: UserObjectType): Promise<WalletObjectType[]> {
         return await this._walletsService.walletsByOwnerId(user.id)
     }
 
     // Mutation to create a user
-    @Mutation(() => UserObjectType)
+    @Mutation(() => UserObjectType, { description: 'Mutation for create user' })
     @UsePipes(new ValidationPipe())
     async createUser(
         @Args('input', { type: () => CreateUserInputType })
@@ -61,7 +61,7 @@ export class UsersResolver {
     }
 
     // Mutation to delete a user
-    @Mutation(() => String)
+    @Mutation(() => String, { description: 'Mutation for delete user' })
     async deleteUser(
         @Args('id', { type: () => String })
         id: string,

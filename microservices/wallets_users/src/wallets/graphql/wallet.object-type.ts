@@ -1,6 +1,6 @@
 import { Field, Float, ObjectType } from '@nestjs/graphql'
 
-@ObjectType()
+@ObjectType({ description: 'Wallet' })
 export class WalletObjectType {
     @Field(() => String, { description: 'Id of the wallet' })
     id: string

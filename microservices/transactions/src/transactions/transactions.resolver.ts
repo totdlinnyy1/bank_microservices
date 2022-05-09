@@ -12,7 +12,9 @@ export class TransactionsResolver {
     constructor(private readonly _transactionsService: TransactionsService) {}
 
     // Request to receive all wallet transactions
-    @Query(() => [TransactionObjectType])
+    @Query(() => [TransactionObjectType], {
+        description: 'Query for get wallet transactions by wallet id',
+    })
     async transactions(
         @Args('walletId', { type: () => String })
         walletId: string,
@@ -23,7 +25,9 @@ export class TransactionsResolver {
     }
 
     // Request to receive one wallet transaction
-    @Query(() => TransactionObjectType)
+    @Query(() => TransactionObjectType, {
+        description: 'Query for get transaction by its id',
+    })
     async transaction(
         @Args('getSingleTransactionData', {
             type: () => GetSingleTransactionInput,
