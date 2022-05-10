@@ -8,6 +8,7 @@ import {
 } from '@nestjs/common'
 import { ClientProxy } from '@nestjs/microservices'
 import { InjectRepository } from '@nestjs/typeorm'
+import { timeout } from 'rxjs'
 import { Connection, Repository } from 'typeorm'
 
 import { isMoneyEnoughToWithdraw } from '../../helpers/isMoneyEnoughToWithdraw'
@@ -19,9 +20,11 @@ import { CreateWalletDto } from './dtos/createWallet.dto'
 import { DepositOrWithdrawDto } from './dtos/depositOrWithdraw.dto'
 import { GetTransactionsDto } from './dtos/getTransactions.dto'
 import { LockWalletDto } from './dtos/lockWallet.dto'
-import { MakeTransactionDto } from './dtos/makeTransaction.dto'
+import { MakeTransferDto } from './dtos/makeTransfer.dto'
 import { WalletEntity } from './entities/wallet.entity'
 import { TransactionObjectType } from './graphql/transaction.object-type'
+
+const MICROSERVICE_TIMEOUT = 6000
 
 @Injectable()
 export class WalletsService {
@@ -224,24 +227,35 @@ export class WalletsService {
             await queryRunner.release()
         }
 
-        this._logger.debug('RETURN TRANSACTION')
-        const transaction = await this._client
-            .send<TransactionObjectType, CreateTransactionDto>(
-                { cmd: 'CREATE_TRANSACTION' },
-                {
-                    money: data.money,
-                    toWalletId: data.id,
-                    type: TransactionTypeEnum.DEPOSIT,
-                },
+        try {
+            this._logger.debug('RETURN TRANSACTION')
+            const transaction = await this._client
+                .send<TransactionObjectType, CreateTransactionDto>(
+                    { cmd: 'CREATE_TRANSACTION' },
+                    {
+                        money: data.money,
+                        toWalletId: data.id,
+                        type: TransactionTypeEnum.DEPOSIT,
+                    },
+                )
+                .pipe(timeout(MICROSERVICE_TIMEOUT))
+                .toPromise()
+            this._logger.debug({ transaction })
+
+            if (!transaction) {
+                throw new InternalServerErrorException(
+                    'Error creating transaction',
+                )
+            }
+
+            return transaction
+        } catch (err) {
+            this._logger.debug('ERROR WHILE TRANSACTION CREATE')
+            this._logger.debug({ err })
+            throw new InternalServerErrorException(
+                'Error while transaction create',
             )
-            .toPromise()
-        this._logger.debug({ transaction })
-
-        if (!transaction) {
-            throw new InternalServerErrorException('Error creating transaction')
         }
-
-        return transaction
     }
 
     // The function withdraws money from the wallet
@@ -301,30 +315,39 @@ export class WalletsService {
             await queryRunner.release()
         }
 
-        this._logger.debug('RETURN TRANSACTION')
-        const transaction = await this._client
-            .send<TransactionObjectType, CreateTransactionDto>(
-                { cmd: 'CREATE_TRANSACTION' },
-                {
-                    money: data.money,
-                    toWalletId: data.id,
-                    type: TransactionTypeEnum.WITHDRAW,
-                },
+        try {
+            this._logger.debug('RETURN TRANSACTION')
+            const transaction = await this._client
+                .send<TransactionObjectType, CreateTransactionDto>(
+                    { cmd: 'CREATE_TRANSACTION' },
+                    {
+                        money: data.money,
+                        toWalletId: data.id,
+                        type: TransactionTypeEnum.WITHDRAW,
+                    },
+                )
+                .pipe(timeout(MICROSERVICE_TIMEOUT))
+                .toPromise()
+            this._logger.debug({ transaction })
+
+            if (!transaction) {
+                throw new InternalServerErrorException(
+                    'Error creating transaction',
+                )
+            }
+
+            return transaction
+        } catch (err) {
+            this._logger.debug('ERROR WHILE TRANSACTION CREATE')
+            this._logger.debug({ err })
+            throw new InternalServerErrorException(
+                'Error while transaction create',
             )
-            .toPromise()
-        this._logger.debug({ transaction })
-
-        if (!transaction) {
-            throw new InternalServerErrorException('Error creating transaction')
         }
-
-        return transaction
     }
 
     // The function of creating a transaction between wallets
-    async transaction(
-        data: MakeTransactionDto,
-    ): Promise<TransactionObjectType> {
+    async transfer(data: MakeTransferDto): Promise<TransactionObjectType> {
         this._logger.debug('START TRANSACTION')
         this._logger.debug({ data })
 
@@ -421,24 +444,35 @@ export class WalletsService {
             await queryRunner.release()
         }
 
-        this._logger.debug('RETURN TRANSACTION')
-        const transaction = await this._client
-            .send<TransactionObjectType, CreateTransactionDto>(
-                { cmd: 'CREATE_TRANSACTION' },
-                {
-                    money: data.money,
-                    toWalletId: data.toWalletId,
-                    fromWalletId: data.fromWalletId,
-                    type: TransactionTypeEnum.TRANSACTION,
-                },
+        try {
+            this._logger.debug('RETURN TRANSACTION')
+            const transaction = await this._client
+                .send<TransactionObjectType, CreateTransactionDto>(
+                    { cmd: 'CREATE_TRANSACTION' },
+                    {
+                        money: data.money,
+                        toWalletId: data.toWalletId,
+                        fromWalletId: data.fromWalletId,
+                        type: TransactionTypeEnum.TRANSFER,
+                    },
+                )
+                .pipe(timeout(MICROSERVICE_TIMEOUT))
+                .toPromise()
+            this._logger.debug({ transaction })
+
+            if (!transaction) {
+                throw new InternalServerErrorException(
+                    'Error creating transaction',
+                )
+            }
+
+            return transaction
+        } catch (err) {
+            this._logger.debug('ERROR WHILE TRANSACTION CREATE')
+            this._logger.debug({ err })
+            throw new InternalServerErrorException(
+                'Error while transaction create',
             )
-            .toPromise()
-        this._logger.debug({ transaction })
-
-        if (!transaction) {
-            throw new InternalServerErrorException('Error creating transaction')
         }
-
-        return transaction
     }
 }

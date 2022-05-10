@@ -1,20 +1,16 @@
 import { MigrationInterface, QueryRunner } from 'typeorm'
 
-export class createTransactionMigration1652014780044
+export class createTransactionMigration1652170783421
     implements MigrationInterface
 {
-    name = 'createTransactionMigration1652014780044'
+    name = 'createTransactionMigration1652170783421'
 
     public async up(queryRunner: QueryRunner): Promise<void> {
-        await queryRunner.query(`
-            CREATE TYPE "public"."transactions_type_enum" AS ENUM('deposit', 'withdraw', 'transaction')
-        `)
         await queryRunner.query(`
             CREATE TABLE "transactions" (
                 "id" uuid NOT NULL DEFAULT uuid_generate_v4(),
                 "createdAt" TIMESTAMP NOT NULL DEFAULT now(),
                 "updatedAt" TIMESTAMP NOT NULL DEFAULT now(),
-                "walletId" character varying NOT NULL,
                 "money" double precision NOT NULL,
                 "type" "public"."transactions_type_enum" NOT NULL,
                 "fromWalletId" character varying,
@@ -27,9 +23,6 @@ export class createTransactionMigration1652014780044
     public async down(queryRunner: QueryRunner): Promise<void> {
         await queryRunner.query(`
             DROP TABLE "transactions"
-        `)
-        await queryRunner.query(`
-            DROP TYPE "public"."transactions_type_enum"
         `)
     }
 }

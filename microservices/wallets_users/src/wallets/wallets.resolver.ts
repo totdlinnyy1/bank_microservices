@@ -10,7 +10,7 @@ import {
 
 import { CreateWalletInputType } from './graphql/inputs/createWallet.input-type'
 import { DepositOrWithdrawInputType } from './graphql/inputs/depositOrWithdraw.input-type'
-import { MakeTransactionInputType } from './graphql/inputs/makeTransaction.input-type'
+import { MakeTransferInputType } from './graphql/inputs/makeTransfer.input-type'
 import { TransactionObjectType } from './graphql/transaction.object-type'
 import { WalletObjectType } from './graphql/wallet.object-type'
 import { WalletsService } from './wallets.service'
@@ -110,12 +110,12 @@ export class WalletsResolver {
         description: 'Mutation to transfer money from one wallet to another',
     })
     @UsePipes(new ValidationPipe())
-    async createTransaction(
-        @Args('input', { type: () => MakeTransactionInputType })
-        input: MakeTransactionInputType,
+    async transfer(
+        @Args('input', { type: () => MakeTransferInputType })
+        input: MakeTransferInputType,
     ): Promise<TransactionObjectType> {
         this._logger.debug('MAKE TRANSACTION')
         this._logger.debug({ input })
-        return await this._walletsService.transaction(input)
+        return await this._walletsService.transfer(input)
     }
 }
