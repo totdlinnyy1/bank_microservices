@@ -1,20 +1,30 @@
 import {
     BadRequestException,
+    Inject,
     Injectable,
+    InternalServerErrorException,
     Logger,
     NotFoundException,
 } from '@nestjs/common'
+import { ClientProxy } from '@nestjs/microservices'
 import { InjectRepository } from '@nestjs/typeorm'
+import { timeout } from 'rxjs'
 import { Connection, Repository } from 'typeorm'
 
-import { isMoneyEnoughToWithdraw } from '../../helpers/isMoneyEnoughToWithdraw'
+import { TransactionTypeEnum } from '../enums/transactionType.enum'
+import { isMoneyEnoughToWithdraw } from '../helpers/isMoneyEnoughToWithdraw'
 import { UserEntity } from '../users/entities/user.entity'
 
+import { CreateTransactionDto } from './dtos/createTransaction.dto'
 import { CreateWalletDto } from './dtos/createWallet.dto'
 import { DepositOrWithdrawDto } from './dtos/depositOrWithdraw.dto'
+import { GetTransactionsDto } from './dtos/getTransactions.dto'
 import { LockWalletDto } from './dtos/lockWallet.dto'
-import { MakeTransactionDto } from './dtos/makeTransaction.dto'
+import { MakeTransferDto } from './dtos/makeTransfer.dto'
 import { WalletEntity } from './entities/wallet.entity'
+import { TransactionObjectType } from './graphql/transaction.object-type'
+
+const MICROSERVICE_TIMEOUT = 6000
 
 @Injectable()
 export class WalletsService {
@@ -25,17 +35,18 @@ export class WalletsService {
         private readonly _walletsRepository: Repository<WalletEntity>,
         @InjectRepository(UserEntity)
         private readonly _userRepository: Repository<UserEntity>,
-        private _connection: Connection,
+        private readonly _connection: Connection,
+        @Inject('TRANSACTIONS_SERVICE') private readonly _client: ClientProxy,
     ) {}
 
     // The function creates a wallet
-    async create(createWalletData: CreateWalletDto): Promise<WalletEntity> {
+    async create(data: CreateWalletDto): Promise<WalletEntity> {
         this._logger.debug('START CREATE WALLET')
-        this._logger.debug({ createWalletData })
+        this._logger.debug({ data })
 
         this._logger.debug('CHECK IF USER EXIST')
         const user = await this._userRepository.findOne({
-            id: createWalletData.ownerId,
+            id: data.ownerId,
         })
         this._logger.debug({ user })
 
@@ -47,7 +58,7 @@ export class WalletsService {
 
         this._logger.debug('CREATE WALLET')
         const wallet = await this._walletsRepository.save({
-            ownerId: createWalletData.ownerId,
+            ownerId: data.ownerId,
         })
         this._logger.debug({ wallet })
 
@@ -77,6 +88,37 @@ export class WalletsService {
 
         this._logger.debug('RETURN WALLETS')
         return wallets
+    }
+
+    // Function will get the transactions by wallet id
+    async transactionsByWalletId(
+        walletId: string,
+    ): Promise<TransactionObjectType[]> {
+        try {
+            this._logger.debug('START GET TRANSACTIONS BY WALLET ID')
+            const transactions = await this._client
+                .send<TransactionObjectType[], GetTransactionsDto>(
+                    { cmd: 'GET_WALLET_TRANSACTIONS' },
+                    { walletId },
+                )
+                .pipe(timeout(MICROSERVICE_TIMEOUT))
+                .toPromise()
+            this._logger.debug('RETURN TRANSACTIONS')
+
+            // Check if transactions exist
+            if (!transactions) {
+                return []
+            }
+
+            this._logger.debug({ transactions })
+            return transactions
+        } catch (err) {
+            this._logger.debug('ERROR WHILE GET TRANSACTIONS BY WALLET ID')
+            this._logger.debug({ err })
+            throw new InternalServerErrorException(
+                'Error while get transactions',
+            )
+        }
     }
 
     // The function will get the wallet by its id
@@ -121,13 +163,13 @@ export class WalletsService {
     }
 
     // The function locks wallets
-    async lock(lockWalletData: LockWalletDto): Promise<boolean> {
+    async lock(data: LockWalletDto): Promise<boolean> {
         this._logger.debug('START LOCK WALLETS')
-        this._logger.debug({ lockWalletData })
+        this._logger.debug({ data })
 
         this._logger.debug('GET WALLETS')
         const wallets = await this._walletsRepository.find({
-            ownerId: lockWalletData.ownerId,
+            ownerId: data.ownerId,
             isClosed: false,
             isLock: false,
         })
@@ -140,7 +182,7 @@ export class WalletsService {
 
         this._logger.debug('LOCK WALLETS')
         await this._walletsRepository.update(
-            { ownerId: lockWalletData.ownerId, isClosed: false, isLock: false },
+            { ownerId: data.ownerId, isClosed: false, isLock: false },
             { isLock: true },
         )
 
@@ -148,26 +190,27 @@ export class WalletsService {
         return true
     }
 
-    // The function puts money in the wallet
-    async deposit(
-        makeDepositData: DepositOrWithdrawDto,
-    ): Promise<WalletEntity> {
+    async deposit(data: DepositOrWithdrawDto): Promise<TransactionObjectType> {
         this._logger.debug('START DEPOSIT')
-        this._logger.debug({ makeDepositData })
+        this._logger.debug(data)
 
-        this._logger.debug('START TRANSACTION')
+        const transaction = await this._createTransaction({
+            toWalletId: data.id,
+            money: data.money,
+            type: TransactionTypeEnum.DEPOSIT,
+        })
+
+        this._logger.debug('START DATABASE TRANSACTION')
         const queryRunner = this._connection.createQueryRunner()
         await queryRunner.connect()
         await queryRunner.startTransaction('SERIALIZABLE')
-
         try {
             this._logger.debug('CHECK IF WALLET EXIST')
             const wallet = await queryRunner.manager.findOne(WalletEntity, {
-                id: makeDepositData.id,
+                id: data.id,
                 isClosed: false,
                 isLock: false,
             })
-            this._logger.debug({ wallet })
 
             // Checking for the existence of a wallet
             if (!wallet) {
@@ -180,8 +223,8 @@ export class WalletsService {
             this._logger.debug('DEPOSIT MONEY')
             await queryRunner.manager.update(
                 WalletEntity,
-                { id: makeDepositData.id },
-                { incoming: () => `incoming + ${makeDepositData.money}` },
+                { id: data.id },
+                { incoming: () => `incoming + ${data.money}` },
             )
 
             this._logger.debug('END DATABASE TRANSACTION')
@@ -190,23 +233,33 @@ export class WalletsService {
             this._logger.debug('AN ERROR HAS OCCURRED')
             this._logger.debug({ err })
 
+            await this._deleteTransaction(transaction.id)
+
             await queryRunner.rollbackTransaction()
             throw err
         } finally {
             await queryRunner.release()
         }
 
-        // TODO make return transaction
-        this._logger.debug('RETURN WALLET')
-        return await this.wallet(makeDepositData.id)
+        return transaction
     }
 
     // The function withdraws money from the wallet
-    async withdraw(
-        makeWithdrawData: DepositOrWithdrawDto,
-    ): Promise<WalletEntity> {
+    async withdraw(data: DepositOrWithdrawDto): Promise<TransactionObjectType> {
         this._logger.debug('START WITHDRAW')
-        this._logger.debug({ makeWithdrawData })
+        this._logger.debug({ data })
+
+        const transaction = await this._createTransaction({
+            toWalletId: data.id,
+            money: data.money,
+            type: TransactionTypeEnum.WITHDRAW,
+        })
+
+        if (!transaction) {
+            throw new InternalServerErrorException(
+                'Error while create transaction',
+            )
+        }
 
         this._logger.debug('START DATABASE TRANSACTION')
         const queryRunner = this._connection.createQueryRunner()
@@ -216,7 +269,7 @@ export class WalletsService {
         try {
             this._logger.debug('CHECK IF WALLET EXIST')
             const wallet = await queryRunner.manager.findOne(WalletEntity, {
-                id: makeWithdrawData.id,
+                id: data.id,
                 isClosed: false,
                 isLock: false,
             })
@@ -234,7 +287,7 @@ export class WalletsService {
             if (
                 !isMoneyEnoughToWithdraw({
                     walletBalance: wallet.actualBalance,
-                    withdrawMoney: makeWithdrawData.money,
+                    withdrawMoney: data.money,
                 })
             ) {
                 this._logger.debug('MONEY IS NOT ENOUGH TO WITHDRAW')
@@ -244,8 +297,8 @@ export class WalletsService {
             this._logger.debug('WITHDRAW MONEY')
             await queryRunner.manager.update(
                 WalletEntity,
-                { id: makeWithdrawData.id },
-                { outgoing: () => `outgoing + ${makeWithdrawData.money}` },
+                { id: data.id },
+                { outgoing: () => `outgoing + ${data.money}` },
             )
 
             this._logger.debug('END DATABASE TRANSACTION')
@@ -254,34 +307,37 @@ export class WalletsService {
             this._logger.debug('AN ERROR HAS OCCURRED')
             this._logger.debug({ err })
 
+            await this._deleteTransaction(transaction.id)
+
             await queryRunner.rollbackTransaction()
             throw err
         } finally {
             await queryRunner.release()
         }
 
-        // TODO make return transaction
-        this._logger.debug('RETURN WALLET')
-        return await this.wallet(makeWithdrawData.id)
+        return transaction
     }
 
     // The function of creating a transaction between wallets
-    async transaction(
-        makeTransactionData: MakeTransactionDto,
-    ): Promise<WalletEntity> {
+    async transfer(data: MakeTransferDto): Promise<TransactionObjectType> {
         this._logger.debug('START TRANSACTION')
-        this._logger.debug({ makeTransactionData })
+        this._logger.debug({ data })
 
         this._logger.debug('SELF-TRANSACTION CHECK')
         // Self-translation check
-        if (
-            makeTransactionData.fromWalletId === makeTransactionData.toWalletId
-        ) {
+        if (data.fromWalletId === data.toWalletId) {
             this._logger.debug('SELF-TRANSACTION ERROR')
             throw new BadRequestException(
                 'You cannot make a transaction to yourself',
             )
         }
+
+        const transaction = await this._createTransaction({
+            fromWalletId: data.fromWalletId,
+            toWalletId: data.toWalletId,
+            money: data.money,
+            type: TransactionTypeEnum.TRANSFER,
+        })
 
         this._logger.debug('START DATABASE TRANSACTION')
         const queryRunner = this._connection.createQueryRunner()
@@ -291,7 +347,7 @@ export class WalletsService {
         try {
             this._logger.debug('CHECK IF FROM_WALLET EXIST')
             const fromWallet = await queryRunner.manager.findOne(WalletEntity, {
-                id: makeTransactionData.fromWalletId,
+                id: data.fromWalletId,
                 isClosed: false,
                 isLock: false,
             })
@@ -299,7 +355,7 @@ export class WalletsService {
 
             this._logger.debug('CHECK IF TO_WALLET EXIST')
             const toWallet = await queryRunner.manager.findOne(WalletEntity, {
-                id: makeTransactionData.toWalletId,
+                id: data.toWalletId,
                 isClosed: false,
                 isLock: false,
             })
@@ -328,7 +384,7 @@ export class WalletsService {
             if (
                 !isMoneyEnoughToWithdraw({
                     walletBalance: fromWallet.actualBalance,
-                    withdrawMoney: makeTransactionData.money,
+                    withdrawMoney: data.money,
                 })
             ) {
                 this._logger.debug(
@@ -343,16 +399,16 @@ export class WalletsService {
             // Withdrawing money from the sender's wallet
             await queryRunner.manager.update(
                 WalletEntity,
-                { id: makeTransactionData.fromWalletId },
-                { outgoing: () => `outgoing + ${makeTransactionData.money}` },
+                { id: data.fromWalletId },
+                { outgoing: () => `outgoing + ${data.money}` },
             )
 
             this._logger.debug('DEPOSIT MONEY IN TO_WALLET')
             // Deposit money to the receiving wallet
             await queryRunner.manager.update(
                 WalletEntity,
-                { id: makeTransactionData.toWalletId },
-                { incoming: () => `incoming + ${makeTransactionData.money}` },
+                { id: data.toWalletId },
+                { incoming: () => `incoming + ${data.money}` },
             )
 
             this._logger.debug('END DATABASE TRANSACTION')
@@ -361,14 +417,47 @@ export class WalletsService {
             this._logger.debug('AN ERROR HAS OCCURRED')
             this._logger.debug({ err })
 
+            await this._deleteTransaction(transaction.id)
+
             await queryRunner.rollbackTransaction()
             throw err
         } finally {
             await queryRunner.release()
         }
 
-        // TODO make return transaction
-        this._logger.debug('RETURN WALLET')
-        return await this.wallet(makeTransactionData.fromWalletId)
+        return transaction
+    }
+
+    // Delete transaction from transactions microservice
+    private async _deleteTransaction(id: string): Promise<void> {
+        this._logger.debug('DELETE TRANSACTION')
+        this._logger.debug(id)
+        await this._client
+            .send<boolean, string>({ cmd: 'DELETE_TRANSACTION' }, id)
+            .toPromise()
+    }
+
+    // Create transaction in transactions microservice
+    private async _createTransaction(
+        data: CreateTransactionDto,
+    ): Promise<TransactionObjectType> {
+        this._logger.debug('CREATE TRANSACTION')
+        const transaction = await this._client
+            .send<TransactionObjectType, CreateTransactionDto>(
+                { cmd: 'CREATE_TRANSACTION' },
+                data,
+            )
+            .toPromise()
+
+        if (!transaction) {
+            this._logger.debug('ERROR WHILE CREATE TRANSACTION')
+            throw new InternalServerErrorException(
+                'Error while create transaction',
+            )
+        }
+
+        this._logger.debug({ transaction })
+
+        return transaction
     }
 }

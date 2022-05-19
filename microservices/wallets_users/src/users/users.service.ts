@@ -53,13 +53,13 @@ export class UsersService {
     }
 
     // User creation function
-    async create(createUserData: CreateUserDto): Promise<UserEntity> {
+    async create(data: CreateUserDto): Promise<UserEntity> {
         this._logger.debug('START CREATE USER')
-        this._logger.debug({ createUserData })
+        this._logger.debug({ data })
 
         this._logger.debug('CHECK IF USER EXIST')
         const candidate = await this._usersRepository.findOne({
-            email: createUserData.email,
+            email: data.email,
         })
         this._logger.debug({ candidate })
 
@@ -70,7 +70,7 @@ export class UsersService {
         }
 
         this._logger.debug('SAVE USER TO DATABASE')
-        const user = await this._usersRepository.save(createUserData)
+        const user = await this._usersRepository.save(data)
         this._logger.debug({ user })
 
         this._logger.debug('RETURN USER')

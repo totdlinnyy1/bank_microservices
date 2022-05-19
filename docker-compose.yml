@@ -1,0 +1,20 @@
+volumes:
+  rabbitmq-data-volume:
+
+services:
+  rabbitmq:
+    image: rabbitmq:3.10-management
+    restart: always
+    container_name: rabbitmq
+    environment:
+      - RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS=-rabbitmq_management load_definitions "/etc/rabbitmq/rabbit.json"
+      - RABBITMQ_DEFAULT_USER=admin
+      - RABBITMQ_DEFAULT_PASS=admin
+    hostname: rabbitmq
+    volumes:
+      - rabbitmq-data-volume:/var/lib/rabbitmq
+      - ./rabbit.json:/etc/rabbitmq/rabbit.json
+    ports:
+      - "15672:15672"
+      - "5672:5672"
+
