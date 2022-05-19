@@ -11,8 +11,8 @@ import { InjectRepository } from '@nestjs/typeorm'
 import { timeout } from 'rxjs'
 import { Connection, Repository } from 'typeorm'
 
-import { isMoneyEnoughToWithdraw } from '../../helpers/isMoneyEnoughToWithdraw'
 import { TransactionTypeEnum } from '../enums/transactionType.enum'
+import { isMoneyEnoughToWithdraw } from '../helpers/isMoneyEnoughToWithdraw'
 import { UserEntity } from '../users/entities/user.entity'
 
 import { CreateTransactionDto } from './dtos/createTransaction.dto'
