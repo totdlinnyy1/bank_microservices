@@ -94,22 +94,31 @@ export class WalletsService {
     async transactionsByWalletId(
         walletId: string,
     ): Promise<TransactionObjectType[]> {
-        this._logger.debug('START GET TRANSACTIONS BY WALLET ID')
-        const transactions = await this._client
-            .send<TransactionObjectType[], GetTransactionsDto>(
-                { cmd: 'GET_WALLET_TRANSACTIONS' },
-                { walletId },
+        try {
+            this._logger.debug('START GET TRANSACTIONS BY WALLET ID')
+            const transactions = await this._client
+                .send<TransactionObjectType[], GetTransactionsDto>(
+                    { cmd: 'GET_WALLET_TRANSACTIONS' },
+                    { walletId },
+                )
+                .pipe(timeout(MICROSERVICE_TIMEOUT))
+                .toPromise()
+            this._logger.debug('RETURN TRANSACTIONS')
+
+            // Check if transactions exist
+            if (!transactions) {
+                return []
+            }
+
+            this._logger.debug({ transactions })
+            return transactions
+        } catch (err) {
+            this._logger.debug('ERROR WHILE GET TRANSACTIONS BY WALLET ID')
+            this._logger.debug({ err })
+            throw new InternalServerErrorException(
+                'Error while get transactions',
             )
-            .toPromise()
-        this._logger.debug('RETURN TRANSACTIONS')
-
-        // Check if transactions exist
-        if (!transactions) {
-            return []
         }
-
-        this._logger.debug({ transactions })
-        return transactions
     }
 
     // The function will get the wallet by its id
@@ -181,16 +190,20 @@ export class WalletsService {
         return true
     }
 
-    // The function puts money in the wallet
     async deposit(data: DepositOrWithdrawDto): Promise<TransactionObjectType> {
         this._logger.debug('START DEPOSIT')
-        this._logger.debug({ data })
+        this._logger.debug(data)
 
-        this._logger.debug('START TRANSACTION')
+        const transaction = await this._createTransaction({
+            toWalletId: data.id,
+            money: data.money,
+            type: TransactionTypeEnum.DEPOSIT,
+        })
+
+        this._logger.debug('START DATABASE TRANSACTION')
         const queryRunner = this._connection.createQueryRunner()
         await queryRunner.connect()
         await queryRunner.startTransaction('SERIALIZABLE')
-
         try {
             this._logger.debug('CHECK IF WALLET EXIST')
             const wallet = await queryRunner.manager.findOne(WalletEntity, {
@@ -198,7 +211,6 @@ export class WalletsService {
                 isClosed: false,
                 isLock: false,
             })
-            this._logger.debug({ wallet })
 
             // Checking for the existence of a wallet
             if (!wallet) {
@@ -221,47 +233,33 @@ export class WalletsService {
             this._logger.debug('AN ERROR HAS OCCURRED')
             this._logger.debug({ err })
 
+            await this._deleteTransaction(transaction.id)
+
             await queryRunner.rollbackTransaction()
             throw err
         } finally {
             await queryRunner.release()
         }
 
-        try {
-            this._logger.debug('RETURN TRANSACTION')
-            const transaction = await this._client
-                .send<TransactionObjectType, CreateTransactionDto>(
-                    { cmd: 'CREATE_TRANSACTION' },
-                    {
-                        money: data.money,
-                        toWalletId: data.id,
-                        type: TransactionTypeEnum.DEPOSIT,
-                    },
-                )
-                .pipe(timeout(MICROSERVICE_TIMEOUT))
-                .toPromise()
-            this._logger.debug({ transaction })
-
-            if (!transaction) {
-                throw new InternalServerErrorException(
-                    'Error creating transaction',
-                )
-            }
-
-            return transaction
-        } catch (err) {
-            this._logger.debug('ERROR WHILE TRANSACTION CREATE')
-            this._logger.debug({ err })
-            throw new InternalServerErrorException(
-                'Error while transaction create',
-            )
-        }
+        return transaction
     }
 
     // The function withdraws money from the wallet
     async withdraw(data: DepositOrWithdrawDto): Promise<TransactionObjectType> {
         this._logger.debug('START WITHDRAW')
         this._logger.debug({ data })
+
+        const transaction = await this._createTransaction({
+            toWalletId: data.id,
+            money: data.money,
+            type: TransactionTypeEnum.WITHDRAW,
+        })
+
+        if (!transaction) {
+            throw new InternalServerErrorException(
+                'Error while create transaction',
+            )
+        }
 
         this._logger.debug('START DATABASE TRANSACTION')
         const queryRunner = this._connection.createQueryRunner()
@@ -309,41 +307,15 @@ export class WalletsService {
             this._logger.debug('AN ERROR HAS OCCURRED')
             this._logger.debug({ err })
 
+            await this._deleteTransaction(transaction.id)
+
             await queryRunner.rollbackTransaction()
             throw err
         } finally {
             await queryRunner.release()
         }
 
-        try {
-            this._logger.debug('RETURN TRANSACTION')
-            const transaction = await this._client
-                .send<TransactionObjectType, CreateTransactionDto>(
-                    { cmd: 'CREATE_TRANSACTION' },
-                    {
-                        money: data.money,
-                        toWalletId: data.id,
-                        type: TransactionTypeEnum.WITHDRAW,
-                    },
-                )
-                .pipe(timeout(MICROSERVICE_TIMEOUT))
-                .toPromise()
-            this._logger.debug({ transaction })
-
-            if (!transaction) {
-                throw new InternalServerErrorException(
-                    'Error creating transaction',
-                )
-            }
-
-            return transaction
-        } catch (err) {
-            this._logger.debug('ERROR WHILE TRANSACTION CREATE')
-            this._logger.debug({ err })
-            throw new InternalServerErrorException(
-                'Error while transaction create',
-            )
-        }
+        return transaction
     }
 
     // The function of creating a transaction between wallets
@@ -359,6 +331,13 @@ export class WalletsService {
                 'You cannot make a transaction to yourself',
             )
         }
+
+        const transaction = await this._createTransaction({
+            fromWalletId: data.fromWalletId,
+            toWalletId: data.toWalletId,
+            money: data.money,
+            type: TransactionTypeEnum.TRANSFER,
+        })
 
         this._logger.debug('START DATABASE TRANSACTION')
         const queryRunner = this._connection.createQueryRunner()
@@ -438,41 +417,47 @@ export class WalletsService {
             this._logger.debug('AN ERROR HAS OCCURRED')
             this._logger.debug({ err })
 
+            await this._deleteTransaction(transaction.id)
+
             await queryRunner.rollbackTransaction()
             throw err
         } finally {
             await queryRunner.release()
         }
 
-        try {
-            this._logger.debug('RETURN TRANSACTION')
-            const transaction = await this._client
-                .send<TransactionObjectType, CreateTransactionDto>(
-                    { cmd: 'CREATE_TRANSACTION' },
-                    {
-                        money: data.money,
-                        toWalletId: data.toWalletId,
-                        fromWalletId: data.fromWalletId,
-                        type: TransactionTypeEnum.TRANSFER,
-                    },
-                )
-                .pipe(timeout(MICROSERVICE_TIMEOUT))
-                .toPromise()
-            this._logger.debug({ transaction })
+        return transaction
+    }
 
-            if (!transaction) {
-                throw new InternalServerErrorException(
-                    'Error creating transaction',
-                )
-            }
+    // Delete transaction from transactions microservice
+    private async _deleteTransaction(id: string): Promise<void> {
+        this._logger.debug('DELETE TRANSACTION')
+        this._logger.debug(id)
+        await this._client
+            .send<boolean, string>({ cmd: 'DELETE_TRANSACTION' }, id)
+            .toPromise()
+    }
 
-            return transaction
-        } catch (err) {
-            this._logger.debug('ERROR WHILE TRANSACTION CREATE')
-            this._logger.debug({ err })
+    // Create transaction in transactions microservice
+    private async _createTransaction(
+        data: CreateTransactionDto,
+    ): Promise<TransactionObjectType> {
+        this._logger.debug('CREATE TRANSACTION')
+        const transaction = await this._client
+            .send<TransactionObjectType, CreateTransactionDto>(
+                { cmd: 'CREATE_TRANSACTION' },
+                data,
+            )
+            .toPromise()
+
+        if (!transaction) {
+            this._logger.debug('ERROR WHILE CREATE TRANSACTION')
             throw new InternalServerErrorException(
-                'Error while transaction create',
+                'Error while create transaction',
             )
         }
+
+        this._logger.debug({ transaction })
+
+        return transaction
     }
 }

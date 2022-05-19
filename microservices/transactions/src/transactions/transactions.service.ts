@@ -3,7 +3,6 @@ import { InjectRepository } from '@nestjs/typeorm'
 import { Repository } from 'typeorm'
 
 import { CreateTransactionDto } from './dtos/createTransaction.dto'
-import { GetSingleTransactionDto } from './dtos/getSingleTransactionDto'
 import { GetTransactionsDto } from './dtos/getTransactions.dto'
 import { TransactionEntity } from './entities/transaction.entity'
 
@@ -34,16 +33,13 @@ export class TransactionsService {
     }
 
     // Function to receive one wallet transaction
-    async transaction(
-        data: GetSingleTransactionDto,
-    ): Promise<TransactionEntity> {
+    async transaction(id: string): Promise<TransactionEntity> {
         this._logger.debug('START GET TRANSACTION BY WALLET ID')
-        this._logger.debug({ data })
+        this._logger.debug(id)
 
         this._logger.debug('CHECK IF TRANSACTION EXIST')
         const candidate = await this._transactionsRepository.findOne({
-            id: data.transactionId,
-            toWalletId: data.toWalletId,
+            id,
         })
         this._logger.debug({ candidate })
 
@@ -70,5 +66,17 @@ export class TransactionsService {
 
         this._logger.debug('RETURN TRANSACTION')
         return transaction
+    }
+
+    async deleteTransaction(id: string): Promise<boolean> {
+        this._logger.debug('START DELETE TRANSACTION')
+        this._logger.debug(id)
+
+        await this.transaction(id)
+
+        await this._transactionsRepository.delete(id)
+
+        this._logger.debug('DELETE TRANSACTION SUCCESS')
+        return true
     }
 }

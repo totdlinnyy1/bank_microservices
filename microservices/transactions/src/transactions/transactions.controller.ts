@@ -17,9 +17,17 @@ export class TransactionsController {
     async createTransaction(
         @Payload() data: CreateTransactionDto,
     ): Promise<TransactionEntity> {
-        this._logger.debug('GET TRANSACTION MESSAGE')
+        this._logger.debug('GET CREATE TRANSACTION MESSAGE')
         this._logger.debug({ data })
         return await this._transactionsService.saveTransaction(data)
+    }
+
+    // Message pattern to create transactions
+    @MessagePattern({ cmd: 'DELETE_TRANSACTION' })
+    async deleteTransaction(@Payload() id: string): Promise<boolean> {
+        this._logger.debug('GET DELETE TRANSACTION MESSAGE')
+        this._logger.debug(id)
+        return await this._transactionsService.deleteTransaction(id)
     }
 
     // Message pattern to get wallet transactions

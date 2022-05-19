@@ -1,7 +1,6 @@
 import { Logger } from '@nestjs/common'
 import { Args, Query, Resolver } from '@nestjs/graphql'
 
-import { GetSingleTransactionInput } from './graphql/inputs/getSingleTransaction.input'
 import { TransactionObjectType } from './graphql/transaction.object-type'
 import { TransactionsService } from './transactions.service'
 
@@ -29,15 +28,10 @@ export class TransactionsResolver {
         description: 'Query for get transaction by its id',
     })
     async transaction(
-        @Args('getSingleTransactionData', {
-            type: () => GetSingleTransactionInput,
-        })
-        getSingleTransactionData: GetSingleTransactionInput,
+        @Args('id', { type: () => String }) id: string,
     ): Promise<TransactionObjectType> {
-        this._logger.debug('GET WALLET TRANSACTION BY WALLET ID')
-        this._logger.debug({ getSingleTransactionData })
-        return await this._transactionsService.transaction(
-            getSingleTransactionData,
-        )
+        this._logger.debug('GET WALLET TRANSACTION BY ID')
+        this._logger.debug(id)
+        return await this._transactionsService.transaction(id)
     }
 }
