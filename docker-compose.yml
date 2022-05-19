@@ -1,5 +1,6 @@
 volumes:
   rabbitmq-data-volume:
+  db:
 
 services:
   rabbitmq:
@@ -17,4 +18,16 @@ services:
     ports:
       - "15672:15672"
       - "5672:5672"
+  db:
+    image: postgres:latest
+    restart: always
+    container_name: postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - db:/var/lib/postgresql/data
+      - ./postgresql.conf:/etc/postgresql/postgresql.conf
+    ports:
+      - 5432:5432
 

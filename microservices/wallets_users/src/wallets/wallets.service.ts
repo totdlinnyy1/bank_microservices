@@ -434,6 +434,7 @@ export class WalletsService {
         this._logger.debug(id)
         await this._client
             .send<boolean, string>({ cmd: 'DELETE_TRANSACTION' }, id)
+            .pipe(timeout(MICROSERVICE_TIMEOUT))
             .toPromise()
     }
 
@@ -447,6 +448,7 @@ export class WalletsService {
                 { cmd: 'CREATE_TRANSACTION' },
                 data,
             )
+            .pipe(timeout(MICROSERVICE_TIMEOUT))
             .toPromise()
 
         if (!transaction) {
